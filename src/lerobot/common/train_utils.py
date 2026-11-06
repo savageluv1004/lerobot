@@ -25,6 +25,7 @@ its writes live in the same method.
 
 import logging
 import os
+import sys
 from importlib.resources import files
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -132,8 +133,18 @@ def update_last_checkpoint(checkpoint_dir: Path) -> None:
     last_checkpoint_dir = checkpoint_dir.parent / LAST_CHECKPOINT_LINK
     if last_checkpoint_dir.is_symlink():
         last_checkpoint_dir.unlink()
+    elif last_checkpoint_dir.is_junction():
+        os.rmdir(last_checkpoint_dir)
     relative_target = checkpoint_dir.relative_to(checkpoint_dir.parent)
-    last_checkpoint_dir.symlink_to(relative_target)
+    try:
+        last_checkpoint_dir.symlink_to(relative_target)
+    except OSError:
+        # Windows without admin/Developer Mode cannot create symlinks; a directory junction needs no privilege.
+        if sys.platform != "win32":
+            raise
+        import _winapi
+
+        _winapi.CreateJunction(str(checkpoint_dir.resolve()), str(last_checkpoint_dir))
 
 
 # ---------------------------------------------------------------------------------------------
